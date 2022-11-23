@@ -38,12 +38,15 @@ class ProductController extends Controller
             ];
         }
         $session = \Stripe\Checkout\Session::create([
-            'payment_method_types' => ['card'],
-            'payment_method_types' => ['card', 'wechat_pay','alipay'],
+            'payment_method_types' => ['card', 'wechat_pay', 'alipay'],
             'payment_method_options' => [
                 'wechat_pay' => [
                     'client' => "web"
                 ],
+            ],
+            "customer_creation" => 'always',
+            'phone_number_collection' => [
+                'enabled' => true,
             ],
             'line_items' => $lineItems,
             'mode' => 'payment',
@@ -51,28 +54,30 @@ class ProductController extends Controller
             'cancel_url' => route('checkout.cancel', [], true),
 
         ]);
-
         $order = new Order();
         $order->status = 'unpaid';
         $order->total_price = $totalPrice;
         $order->session_id = $session->id;
         $order->save();
-        //dd($session->url);
         return redirect($session->url);
     }
 
     public function success(Request $request)
     {
-        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET_KEY'));
+        $stripe = new \Stripe\StripeClient(env('STRIPE_SECRET'));
         $sessionId = $request->get('session_id');
-
         try {
-            $session = \Stripe\Checkout\Session::retrieve($sessionId);
+
+            $session = $stripe->checkout->sessions->retrieve($sessionId);
+            //dd($session);
+            //dd($session);
             if (!$session) {
                 throw new NotFoundHttpException;
             }
-            $customer = \Stripe\Customer::retrieve($session->customer);
-
+            //$customer = \Stripe\Customer::retrieve($session->customer);
+            $customer = $stripe->customers->retrieve($session->customer);
+            //dd($session);
+            //dd($customer);
             $order = Order::where('session_id', $session->id)->first();
             if (!$order) {
                 throw new NotFoundHttpException();
