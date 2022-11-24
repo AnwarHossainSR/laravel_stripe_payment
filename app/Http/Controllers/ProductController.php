@@ -12,8 +12,25 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $products = Product::all();
-
         return view('product.index', compact('products'));
+    }
+
+    public function createProduct()
+    {
+        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+        $product = \Stripe\Price::create([
+            'unit_amount' => 2000,
+            'currency' => 'jpy',
+            'recurring' => [
+                'interval' => 'month',
+            ],
+            'lookup_key' => 'standard_monthly',
+            'transfer_lookup_key' => true,
+            'product_data' => [
+                'name' => 'Standard Monthly',
+            ],
+        ]);
+        return $product;
     }
 
     public function checkout()
@@ -24,8 +41,8 @@ class ProductController extends Controller
         $totalPrice = 1000;
         $prices = \Stripe\Price::all([
             // retrieve lookup_key from form data POST body
-            'lookup_keys' => ['basic'],
-            'expand' => ['data.product']
+            'lookup_keys' => ['standard_monthly'],
+            'expand' => ['data.product'],
         ]);
 
         $lineItems = [[
