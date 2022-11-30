@@ -83,12 +83,11 @@ class SubscriptionController extends Controller
         $stripe = new \Stripe\StripeClient(env('STRIPE_SECRET'));
         $sessionId = $request->get('session_id');
         try {
-
             $session = $stripe->checkout->sessions->retrieve($sessionId);
             //dd($session);
             //dd($session);
             if (!$session) {
-                throw new NotFoundHttpException;
+                throw new NotFoundHttpException();
             }
             //$customer = \Stripe\Customer::retrieve($session->customer);
             $customer = $stripe->customers->retrieve($session->customer);
@@ -157,6 +156,7 @@ class SubscriptionController extends Controller
                 }
 
                 // ... handle other event types
+                // no break
             default:
                 echo 'Received unknown event type ' . $event->type;
         }
