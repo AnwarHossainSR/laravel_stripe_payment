@@ -18,12 +18,13 @@ class SubscriptionController extends Controller
     public function createProduct()
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+
         $product = \Stripe\Price::create([
             'unit_amount' => 99 * 100,
             'currency' => 'usd',
             'recurring' => [
                 'interval' => 'month',
-                'trial_period_days' => 7,
+                'trial_period_days' => 1,
             ],
             'lookup_key' => 'standard_monthly',
             'transfer_lookup_key' => true,
@@ -38,8 +39,11 @@ class SubscriptionController extends Controller
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
 
-        $customers = \Stripe\Customer::all([]);
-        //dd($customers);
+        // return all customers from stripe
+        $customers = \Stripe\Subscription::all([
+            'customer' => 'cus_MtZLUAL1L2X38o',
+        ]);
+        dd($customers->data[0]);
         $totalPrice = 1000;
         $prices = \Stripe\Price::all([
             // retrieve lookup_key from form data POST body
@@ -60,10 +64,10 @@ class SubscriptionController extends Controller
             'line_items' => $lineItems,
             'mode' => 'subscription',
             'subscription_data' => [
-                //'trial_from_plan' => true,
+                'trial_from_plan' => true,
             ],
             'success_url' => route('checkout.subscription.success', [], true) . "?session_id={CHECKOUT_SESSION_ID}",
-            'cancel_url' => route('checkout.subscription.cancel', [], true),
+            'cancel_url' => route('checkout.subscription.failure', [], true),
         ]);
 
         $order = new Order();
@@ -89,7 +93,7 @@ class SubscriptionController extends Controller
             //$customer = \Stripe\Customer::retrieve($session->customer);
             $customer = $stripe->customers->retrieve($session->customer);
             //dd($session);
-            //dd($customer);
+            dd($customer);
             $order = Order::where('session_id', $session->id)->first();
             if (!$order) {
                 throw new NotFoundHttpException();
@@ -105,8 +109,16 @@ class SubscriptionController extends Controller
         }
     }
 
-    public function cancel()
+    public function failure()
     {
+        return response()->json(['message' => 'Payment failed']);
+    }
+
+    public function subscriptionCancel($subscription_id)
+    {
+        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+        $subscription = \Stripe\Subscription::retrieve($subscription_id);
+        dd($subscription);
     }
 
     public function webhook()

@@ -15,4 +15,6 @@ Route::get('/create-product', [SubscriptionController::class, 'createProduct'])-
 Route::get('/', [SubscriptionController::class, 'index']);
 Route::post('/checkout-subscription', [SubscriptionController::class, 'checkout'])->name('checkout.subscription');
 Route::get('/subscription/success', [SubscriptionController::class, 'success'])->name('checkout.subscription.success');
-Route::get('/cancel', [SubscriptionController::class, 'cancel'])->name('checkout.subscription.cancel');
+Route::get('/subscription/failure', [SubscriptionController::class, 'failure'])->name('checkout.subscription.failure');
+
+Route::get('/subscription/cancel', [SubscriptionController::class, 'subscriptionCancel'])->name('checkout.subscription.cancel');
