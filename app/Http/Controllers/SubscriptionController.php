@@ -7,54 +7,69 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
-class ProductController extends Controller
+class SubscriptionController extends Controller
 {
     public function index(Request $request)
     {
         $products = Product::all();
+        return view('subscription.index', compact('products'));
+    }
 
-        return view('product.index', compact('products'));
+    public function createProduct()
+    {
+        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+
+        $product = \Stripe\Price::create([
+            'unit_amount' => 99 * 100,
+            'currency' => 'usd',
+            'recurring' => [
+                'interval' => 'month',
+                'trial_period_days' => 1,
+            ],
+            'lookup_key' => 'standard_monthly',
+            'transfer_lookup_key' => true,
+            'product_data' => [
+                'name' => 'Standard Monthly',
+            ],
+        ]);
+        dd($product);
     }
 
     public function checkout()
     {
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
 
-        $products = Product::all();
-        $lineItems = [];
-        $totalPrice = 0;
-        foreach ($products as $product) {
-            $totalPrice += $product->price;
-            $lineItems[] = [
-                'price_data' => [
-                    'currency' => 'usd',
-                    'product_data' => [
-                        'name' => $product->name,
-                        'images' => [$product->image]
-                    ],
-                    'unit_amount' => $product->price*100,
-                ],
-                'quantity' => 1,
-            ];
-        }
+        // return all customers from stripe
+        $customers = \Stripe\Subscription::all([
+            'customer' => 'cus_MtZLUAL1L2X38o',
+        ]);
+        dd($customers->data[0]);
+        $totalPrice = 1000;
+        $prices = \Stripe\Price::all([
+            // retrieve lookup_key from form data POST body
+            'lookup_keys' => ['standard_monthly'],
+            'expand' => ['data.product'],
+        ]);
+        //dd($prices);
+        $lineItems = [[
+            'price' => $prices->data[0]->id,
+            'quantity' => 1,
+        ]];
+
         $session = \Stripe\Checkout\Session::create([
             'payment_method_types' => ['card'],
-            'payment_method_types' => ['card', 'wechat_pay','alipay'],
-            'payment_method_options' => [
-                'wechat_pay' => [
-                    'client' => "web"
-                ],
-            ],
-            "customer_creation" => 'always',
-            'phone_number_collection' => [
-                'enabled' => true,
-            ],
+            // 'phone_number_collection' => [
+            //     'enabled' => true,
+            // ],
             'line_items' => $lineItems,
-            'mode' => 'payment',
-            'success_url' => route('checkout.success', [], true) . "?session_id={CHECKOUT_SESSION_ID}",
-            'cancel_url' => route('checkout.cancel', [], true),
-
+            'mode' => 'subscription',
+            'subscription_data' => [
+                'trial_from_plan' => true,
+            ],
+            'success_url' => route('checkout.subscription.success', [], true) . "?session_id={CHECKOUT_SESSION_ID}",
+            'cancel_url' => route('checkout.subscription.failure', [], true),
         ]);
+
         $order = new Order();
         $order->status = 'unpaid';
         $order->total_price = $totalPrice;
@@ -78,7 +93,7 @@ class ProductController extends Controller
             //$customer = \Stripe\Customer::retrieve($session->customer);
             $customer = $stripe->customers->retrieve($session->customer);
             //dd($session);
-            //dd($customer);
+            dd($customer);
             $order = Order::where('session_id', $session->id)->first();
             if (!$order) {
                 throw new NotFoundHttpException();
@@ -94,8 +109,16 @@ class ProductController extends Controller
         }
     }
 
-    public function cancel()
+    public function failure()
     {
+        return response()->json(['message' => 'Payment failed']);
+    }
+
+    public function subscriptionCancel($subscription_id)
+    {
+        \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
+        $subscription = \Stripe\Subscription::retrieve($subscription_id);
+        dd($subscription);
     }
 
     public function webhook()
