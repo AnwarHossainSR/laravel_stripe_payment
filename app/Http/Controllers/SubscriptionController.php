@@ -4,15 +4,30 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Subscription;
+use App\Models\User;
+use App\Models\Webhook;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 class SubscriptionController extends Controller
 {
+    public $user;
+
+    public function __construct()
+    {
+        if (Auth::check()) {
+            $this->user = Auth::user();
+        } else {
+            $cuUser = User::find(1);
+            Auth::login($cuUser);
+            $this->user = Auth::user();
+        }
+    }
     public function index(Request $request)
     {
-        $products = Product::all();
-        return view('subscription.index', compact('products'));
+        return view('subscription.index');
     }
 
     public function createProduct()
@@ -24,7 +39,7 @@ class SubscriptionController extends Controller
             'currency' => 'usd',
             'recurring' => [
                 'interval' => 'month',
-                'trial_period_days' => 1,
+                //'trial_period_days' => 1,
             ],
             'lookup_key' => 'standard_monthly',
             'transfer_lookup_key' => true,
@@ -40,11 +55,11 @@ class SubscriptionController extends Controller
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
 
         // return all customers from stripe
-        $customers = \Stripe\Subscription::all([
-            'customer' => 'cus_MtZLUAL1L2X38o',
-        ]);
-        dd($customers->data[0]);
-        $totalPrice = 1000;
+        // $customers = \Stripe\Subscription::all([
+        //     'customer' => 'cus_MtZLUAL1L2X38o',
+        // ]);
+        //dd($customers->data[0]);
+        //$totalPrice = 1000;
         $prices = \Stripe\Price::all([
             // retrieve lookup_key from form data POST body
             'lookup_keys' => ['standard_monthly'],
@@ -62,19 +77,21 @@ class SubscriptionController extends Controller
             //     'enabled' => true,
             // ],
             'line_items' => $lineItems,
+            //'mode' => 'subscription',
             'mode' => 'subscription',
-            'subscription_data' => [
-                'trial_from_plan' => true,
-            ],
+            'customer_email' => $this->user->email,
+            // 'subscription_data' => [
+            //     'trial_from_plan' => true,
+            // ],
             'success_url' => route('checkout.subscription.success', [], true) . "?session_id={CHECKOUT_SESSION_ID}",
             'cancel_url' => route('checkout.subscription.failure', [], true),
         ]);
 
-        $order = new Order();
-        $order->status = 'unpaid';
-        $order->total_price = $totalPrice;
-        $order->session_id = $session->id;
-        $order->save();
+        //dd($session);
+
+        $subscription = new Subscription();
+        $subscription->stripe_session_id = $session->id;
+        $subscription->save();
         return redirect($session->url);
     }
 
@@ -83,9 +100,7 @@ class SubscriptionController extends Controller
         $stripe = new \Stripe\StripeClient(env('STRIPE_SECRET'));
         $sessionId = $request->get('session_id');
         try {
-
             $session = $stripe->checkout->sessions->retrieve($sessionId);
-            //dd($session);
             //dd($session);
             if (!$session) {
                 throw new NotFoundHttpException;
@@ -93,15 +108,14 @@ class SubscriptionController extends Controller
             //$customer = \Stripe\Customer::retrieve($session->customer);
             $customer = $stripe->customers->retrieve($session->customer);
             //dd($session);
-            dd($customer);
-            $order = Order::where('session_id', $session->id)->first();
-            if (!$order) {
+            //dd($customer);
+            $subscription = Subscription::where('stripe_session_id', $session->id)->first();
+            if (!$subscription) {
                 throw new NotFoundHttpException();
             }
-            if ($order->status === 'unpaid') {
-                $order->status = 'paid';
-                $order->save();
-            }
+            $subscription->stripe_cus_id = $customer->id;
+            $subscription->stripe_sub_id = $session->subscription;
+            $subscription->save();
 
             return view('product.checkout-success', compact('customer'));
         } catch (\Exception $e) {
@@ -138,25 +152,46 @@ class SubscriptionController extends Controller
             );
         } catch (\UnexpectedValueException $e) {
             // Invalid payload
-            return response('', 400);
+            return response('1st catch', 400);
         } catch (\Stripe\Exception\SignatureVerificationException $e) {
             // Invalid signature
-            return response('', 400);
+            return response('2nd catch', 400);
         }
 
         // Handle the event
         switch ($event->type) {
             case 'checkout.session.completed':
                 $session = $event->data->object;
-
-                $order = Order::where('session_id', $session->id)->first();
-                if ($order && $order->status === 'unpaid') {
-                    $order->status = 'paid';
-                    $order->save();
-                    // Send email to customer
+                //dd($session);
+                $data = Subscription::where('stripe_session_id', $session->id)->first();
+                if($data && $data->stripe_sub_id == null){
+                    $data->stripe_sub_id = $session->subscription;
                 }
-
-                // ... handle other event types
+                if($data && $data->stripe_cus_id == null){
+                    $data->stripe_cus_id = $session->customer;
+                }
+                $data->status = $session->status;
+                $data->payment_status = $session->payment_status;
+                $data->save();
+                break;
+            case 'invoice.created':
+                $invoice = $event->data->object;
+                //dd($invoice);
+                // $data = Subscription::where('stripe_sub_id', $invoice->subscription)->first();
+                // if($data && $data->stripe_invoice_id == null){
+                //     $data->stripe_invoice_id = $invoice->id;
+                // }
+                // $data->save();
+                break;
+            case 'invoice.finalized':
+                // $invoice = $event->data->object;
+                // //dd($invoice);
+                // $data = Subscription::where('stripe_sub_id', $invoice->subscription)->first();
+                // if($data && $data->stripe_invoice_id == null){
+                //     $data->stripe_invoice_id = $invoice->id;
+                // }
+                // $data->save();
+                break;
             default:
                 echo 'Received unknown event type ' . $event->type;
         }
