@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Webhook;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -40,10 +41,10 @@ class SubscriptionController extends Controller
         \Stripe\Stripe::setApiKey(env('STRIPE_SECRET'));
 
         // return all customers from stripe
-        $customers = \Stripe\Subscription::all([
-            'customer' => 'cus_MtZLUAL1L2X38o',
-        ]);
-        dd($customers->data[0]);
+        // $customers = \Stripe\Subscription::all([
+        //     'customer' => 'cus_MtZLUAL1L2X38o',
+        // ]);
+        //dd($customers->data[0]);
         $totalPrice = 1000;
         $prices = \Stripe\Price::all([
             // retrieve lookup_key from form data POST body
@@ -69,6 +70,8 @@ class SubscriptionController extends Controller
             'success_url' => route('checkout.subscription.success', [], true) . "?session_id={CHECKOUT_SESSION_ID}",
             'cancel_url' => route('checkout.subscription.failure', [], true),
         ]);
+
+        dd($session);
 
         $order = new Order();
         $order->status = 'unpaid';
@@ -98,10 +101,10 @@ class SubscriptionController extends Controller
             if (!$order) {
                 throw new NotFoundHttpException();
             }
-            if ($order->status === 'unpaid') {
-                $order->status = 'paid';
-                $order->save();
-            }
+            // if ($order->status === 'unpaid') {
+            //     $order->status = 'paid';
+            //     $order->save();
+            // }
 
             return view('product.checkout-success', compact('customer'));
         } catch (\Exception $e) {
@@ -138,24 +141,27 @@ class SubscriptionController extends Controller
             );
         } catch (\UnexpectedValueException $e) {
             // Invalid payload
-            return response('', 400);
+            return response('1st catch', 400);
         } catch (\Stripe\Exception\SignatureVerificationException $e) {
             // Invalid signature
-            return response('', 400);
+            return response('2nd catch', 400);
         }
 
         // Handle the event
         switch ($event->type) {
-            case 'checkout.session.completed':
+            case 'customer.subscription.created':
                 $session = $event->data->object;
 
+                echo $session;
                 $order = Order::where('session_id', $session->id)->first();
                 if ($order && $order->status === 'unpaid') {
                     $order->status = 'paid';
                     $order->save();
                     // Send email to customer
                 }
-
+                $webhook = new Webhook();
+                $webhook->type = $session->id;
+                $webhook->save();
                 // ... handle other event types
             default:
                 echo 'Received unknown event type ' . $event->type;
