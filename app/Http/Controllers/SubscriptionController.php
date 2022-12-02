@@ -103,7 +103,7 @@ class SubscriptionController extends Controller
             $session = $stripe->checkout->sessions->retrieve($sessionId);
             //dd($session);
             if (!$session) {
-                throw new NotFoundHttpException;
+                throw new NotFoundHttpException();
             }
             //$customer = \Stripe\Customer::retrieve($session->customer);
             $customer = $stripe->customers->retrieve($session->customer);
@@ -164,10 +164,10 @@ class SubscriptionController extends Controller
                 $session = $event->data->object;
                 //dd($session);
                 $data = Subscription::where('stripe_session_id', $session->id)->first();
-                if($data && $data->stripe_sub_id == null){
+                if ($data && $data->stripe_sub_id == null) {
                     $data->stripe_sub_id = $session->subscription;
                 }
-                if($data && $data->stripe_cus_id == null){
+                if ($data && $data->stripe_cus_id == null) {
                     $data->stripe_cus_id = $session->customer;
                 }
                 $data->status = $session->status;
